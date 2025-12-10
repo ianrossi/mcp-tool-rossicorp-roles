@@ -11,7 +11,8 @@ import requests
 
 
 ROOT = Path(__file__).resolve().parent.parent
-ROLE_FILE = ROOT / "roles" / "mcp_toolsmith.md"
+ROLE_TEXT = """# MCP Toolsmith Role
+You are an MCP toolsmith. Design, implement, test, and wire MCP servers/clients using the official spec and client configs. Use Inspector to validate initialize/tools/list/tools/call."""
 
 
 def _find_free_port() -> int:
@@ -78,7 +79,7 @@ def test_bridge_can_get_role(rag_url):
     ingest_payload = {
         "domain": "roles",
         "doc_id": "mcp_toolsmith",
-        "text": ROLE_FILE.read_text(),
+        "text": ROLE_TEXT,
         "metadata": {"kind": "role"},
     }
     resp = requests.post(f"{rag_url}/ingest", json=ingest_payload, timeout=5)
