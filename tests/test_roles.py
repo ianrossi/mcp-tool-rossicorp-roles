@@ -9,6 +9,13 @@ from pathlib import Path
 import pytest
 import requests
 
+rag_api = None
+uvicorn = None
+try:
+    rag_api = __import__("rag.api", fromlist=["app"])
+    uvicorn = __import__("uvicorn")
+except Exception:
+    pass
 
 ROOT = Path(__file__).resolve().parent.parent
 ROLE_TEXT = """# MCP Toolsmith Role
@@ -47,6 +54,8 @@ def _jsonrpc_call(proc: subprocess.Popen, msg: dict) -> dict:
 
 @pytest.fixture(scope="session")
 def rag_url():
+    if not rag_api or not uvicorn:
+        pytest.skip("rag-service not available; integration test skipped")
     port = _find_free_port()
     env = os.environ.copy()
     # Ensure rag-service source is importable
