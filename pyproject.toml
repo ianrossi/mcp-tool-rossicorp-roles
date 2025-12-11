@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mcp-rag-bridge"
-version = "0.1.0"
-description = "MCP stdio server that bridges to rag-service for role and knowledge retrieval."
+name = "mcp-tool-rossicorp-roles"
+version = "0.2.0"
+description = "MCP stdio server for managing Rossicorp roles via rag-service (search, CRUD, list)."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
@@ -23,7 +23,7 @@ test = [
 ]
 
 [project.scripts]
-mcp-rag-bridge = "mcp_rag_bridge.server:main"
+rossicorp-roles = "rossicorp_roles.server:main"
 
 [tool.setuptools]
-packages = ["mcp_rag_bridge"]
+packages = ["rossicorp_roles"]

@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    container: python:3.11-slim
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}/mcp-tool-rossicorp-roles
+    env:
+      PYTHONPATH: ${{ github.workspace }}/rag-service
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir --upgrade pip
+          pip install --no-cache-dir -e .[test]
+
+      - name: Pytest (containerized)
+        run: pytest tests
+
+  image:
+    runs-on: ubuntu-latest
+    needs: tests
+    defaults:
+      run:
+        working-directory: mcp-tool-rossicorp-roles
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version
+        id: version
+        run: |
+          python - <<'PY'
+          import tomllib
+          with open("pyproject.toml", "rb") as f:
+              data = tomllib.load(f)
+          print(f"version={data['project']['version']}")
+          PY
+
+      - name: Build image with tags
+        run: |
+          VERSION=$(python - <<'PY'
+          import tomllib
+          with open("pyproject.toml", "rb") as f:
+              data = tomllib.load(f)
+          print(data["project"]["version"])
+          PY
+          )
+          docker build -t rossicorp-roles:${VERSION} -t rossicorp-roles:latest .

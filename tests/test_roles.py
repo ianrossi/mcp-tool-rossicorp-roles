@@ -74,23 +74,12 @@ def rag_url():
             proc.kill()
 
 
-def test_bridge_can_get_role(rag_url):
-    # Ingest the toolsmith role into rag-service
-    ingest_payload = {
-        "domain": "roles",
-        "doc_id": "mcp_toolsmith",
-        "text": ROLE_TEXT,
-        "metadata": {"kind": "role"},
-    }
-    resp = requests.post(f"{rag_url}/ingest", json=ingest_payload, timeout=5)
-    assert resp.status_code == 200, resp.text
-
-    # Start MCP bridge pointing at rag-service
+def test_roles_server_crud_and_search(rag_url):
     env = os.environ.copy()
     env["RAG_SERVICE_URL"] = rag_url
-    bridge_cmd = [sys.executable, "-m", "mcp_rag_bridge.server"]
+    server_cmd = [sys.executable, "-m", "rossicorp_roles.server"]
     proc = subprocess.Popen(
-        bridge_cmd,
+        server_cmd,
         env=env,
         cwd=ROOT,
         stdin=subprocess.PIPE,
@@ -113,26 +102,94 @@ def test_bridge_can_get_role(rag_url):
                 },
             },
         )
-        assert "result" in init and init["result"]["serverInfo"]["name"] == "mcp-rag-bridge"
+        assert "result" in init and init["result"]["serverInfo"]["name"] == "rossicorp-roles"
 
         tools = _jsonrpc_call(proc, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
-        tool_names = [t["name"] for t in tools["result"]["tools"]]
-        assert "rag_get_role" in tool_names
+        tool_names = {t["name"] for t in tools["result"]["tools"]}
+        expected = {"roles_search", "roles_list", "roles_get", "roles_upsert", "roles_delete"}
+        assert expected.issubset(tool_names)
 
-        role_res = _jsonrpc_call(
+        # Upsert a role via MCP
+        upsert_res = _jsonrpc_call(
             proc,
             {
                 "jsonrpc": "2.0",
                 "id": 3,
                 "method": "tools/call",
                 "params": {
-                    "name": "rag_get_role",
-                    "arguments": {"name": "MCP Toolsmith", "top_k": 1},
+                    "name": "roles_upsert",
+                    "arguments": {"role_id": "mcp_toolsmith", "text": ROLE_TEXT, "metadata": {"kind": "role"}},
                 },
             },
         )
-        content = role_res["result"]["content"][0]["text"]
-        assert "MCP Toolsmith Role" in content
+        assert upsert_res["result"]["content"][0]["text"].startswith("{")
+
+        # Fetch it
+        get_res = _jsonrpc_call(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "tools/call",
+                "params": {"name": "roles_get", "arguments": {"role_id": "mcp_toolsmith"}},
+            },
+        )
+        fetched = json.loads(get_res["result"]["content"][0]["text"])
+        assert fetched["success"] is True
+        assert "Toolsmith Role" in fetched["result"]["text"]
+
+        # Search
+        search_res = _jsonrpc_call(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/call",
+                "params": {"name": "roles_search", "arguments": {"query": "toolsmith", "top_k": 2}},
+            },
+        )
+        search_data = json.loads(search_res["result"]["content"][0]["text"])
+        assert search_data["results"][0]["id"] == "mcp_toolsmith"
+
+        # List
+        list_res = _jsonrpc_call(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 6,
+                "method": "tools/call",
+                "params": {"name": "roles_list", "arguments": {"include_text": False}},
+            },
+        )
+        list_data = json.loads(list_res["result"]["content"][0]["text"])
+        assert list_data["results"][0]["id"] == "mcp_toolsmith"
+        assert "text" not in list_data["results"][0]
+
+        # Delete
+        delete_res = _jsonrpc_call(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 7,
+                "method": "tools/call",
+                "params": {"name": "roles_delete", "arguments": {"role_id": "mcp_toolsmith"}},
+            },
+        )
+        delete_data = json.loads(delete_res["result"]["content"][0]["text"])
+        assert delete_data["deleted"] is True
+
+        # List again to confirm empty
+        list_after = _jsonrpc_call(
+            proc,
+            {
+                "jsonrpc": "2.0",
+                "id": 8,
+                "method": "tools/call",
+                "params": {"name": "roles_list", "arguments": {}},
+            },
+        )
+        list_after_data = json.loads(list_after["result"]["content"][0]["text"])
+        assert list_after_data["results"] == []
     finally:
         proc.terminate()
         try:
